@@ -696,12 +696,12 @@ class Food:
   
   total_food = 0
   key = 0
-  MAX_TIMES_EATEN = 5 #10
-  MAX_FOOD = 75
+  MAX_TIMES_EATEN = 10
+  MAX_FOOD = 600
   STARTING_FOOD = round(MAX_FOOD/2)
   
   wait_to_add_food = 0
-  FOOD_WAIT = 70
+  FOOD_WAIT = 10
 
   @staticmethod
   def del_and_create_food(food_instances, foods):
@@ -791,7 +791,7 @@ def loading_bar(win, BAR_X, BAR_Y, COLOUR, need, name):
 def add_input(fox_instances, rabbit_instances, speed):
   speed_or_animals = input('Change speed or animals(s/a): ')
   if speed_or_animals == 's':
-    multiple = int(input('Enter speed(multiplys base speed by input): '))
+    multiple = int(input('Enter speed(multiples base speed by input): '))
     del speed[0]
     speed.append(round(multiple*FPS))
     
@@ -1059,9 +1059,9 @@ def main(rabbit_instances, fox_instances, food_instances, mating_female_rabbits,
     if rabbit_instances == 0 and fox_instances == 0:
       run = False
     draw_window(win, rabbit_instances, fox_instances, food_instances, tracked_object)
-  print('thirst deaths: ', thirst_deaths)
+  print('\nthirst deaths: ', thirst_deaths)
   print('hunger deaths: ', hunger_deaths)
-  print('eaten_rabbits: ', round(eaten_rabbits/60))
+  print('eaten rabbits: ', round(eaten_rabbits/60))
   pygame.quit()
   graph(record_fox_instances, record_rabbit_instances)
   
