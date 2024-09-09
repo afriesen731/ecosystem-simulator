@@ -12,6 +12,7 @@ from time import time
 
 
 
+
 # the idea for this project came from this video by Sebastian Lague https://youtu.be/r_It_X7v-1E
 pygame.init()
 WIDTH = 128 #128
