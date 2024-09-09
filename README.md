@@ -15,4 +15,5 @@ Each animal has a state, showing its current goals and needs. You can view an an
 
 - r to view a random rabbit,
 - f to view a random fox.
+
 When you close the window to end the simulation, a graph showing the population trends of foxes and rabbits will appear. The way each rabbit died is also displayed on the terminal.
