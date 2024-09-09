@@ -3,7 +3,7 @@ This project is a visually straightforward ecosystem simulator, written in Pytho
 
 
 <video width="640" height="480" controls>
-  <source src="/video.mp4" type="video/mkv">
+  <source src="/video.mp4" type="video/mp4">
   Your browser does not support the video tag.
 </video>
 
