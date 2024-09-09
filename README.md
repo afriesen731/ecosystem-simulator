@@ -2,7 +2,6 @@
 This project is a visually straightforward ecosystem simulator, written in Python, that models an environment with rabbits and foxes. The inspiration for this project comes from Sebastian Lague’s video [Coding Adventure: Simulating an Ecosystem](https://youtu.be/r_It_X7v-1E).
 
 
-[![video]()](https://raw.githubusercontent.com/afriesen731/ecosystem-simulator/main/video.mp4)
 
 
 ## How to set up
