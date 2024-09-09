@@ -7,7 +7,7 @@ This project is a visually straightforward ecosystem simulator, written in Pytho
 - Blue: water
 
 
-## [video demostration](https://afriesen731.github.io/ecosystem-simulator/) 
+## [video Demonstration](https://afriesen731.github.io/ecosystem-simulator/) 
 
 ## How to set up
 1. Clone the repo
