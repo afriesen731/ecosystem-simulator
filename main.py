@@ -7,22 +7,14 @@ import matplotlib.pyplot as plt
 import json
 from time import time
 
-
-
-
-
-
-
-
 # the idea for this project came from this video by Sebastian Lague https://youtu.be/r_It_X7v-1E
 pygame.init()
-WIDTH = 128 
-HEIGHT = 64 
-
+WIDTH = 128
+HEIGHT = 64
 
 GRID_SIZE = 10
 
-WIN_WIDTH = WIDTH * GRID_SIZE +  GRID_SIZE
+WIN_WIDTH = WIDTH * GRID_SIZE + GRID_SIZE
 WIN_HEIGHT = HEIGHT * GRID_SIZE + GRID_SIZE
 
 FPS = 60
@@ -30,8 +22,6 @@ speed = [FPS]
 
 BACKGROUND = pygame.image.load(os.path.join('background.png'))
 BACKGROUND = pygame.transform.scale(BACKGROUND, (1290, 660))
-
-
 
 GREEN = (73, 163, 90)
 DARK_GREEN = (0, 163, 24)
@@ -44,7 +34,6 @@ BLUE = (3, 28, 252)
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 
-
 WHITE_RECT_Y = 140
 YELLOW_BAR_X = 20
 YELLOW_BAR_Y = WHITE_RECT_Y + 100
@@ -53,47 +42,34 @@ BAR_WIDTH = 20
 WARN_ABOUT_WALL = 5
 BAR_FONT = pygame.font.SysFont(None, 20)
 
-
-
-
-
-
-
-
-
-
 class SimState:
-  _instance = None  
+  _instance = None
   _initialized = False
 
   def __new__(cls, *args, **kwargs):
     if cls._instance is None:
       cls._instance = super(SimState, cls).__new__(cls, *args, **kwargs)
     return cls._instance
-  
+
   def __init__(self):
     if self._initialized:
       return
 
-    
-    self.rabbit_instances = [] 
+    self.rabbit_instances = []
     self.fox_instances = []
     self.food_instances = []
     self.foods = {}
     self.rabbits = {}
-    self.mating_male_rabbits = {} 
+    self.mating_male_rabbits = {}
     self.mating_female_rabbits = {}
     self.foxes = {}
     self.mating_male_foxes = {}
     self.mating_female_foxes = {}
 
-    
     with open('water.json', 'r') as file:
       self.water = json.load(file)
 
     self._initialized = True
-
-
 
 class Animal:
   """Base class representing an animal in the simulation."""
@@ -118,8 +94,9 @@ class Animal:
 
     self.GENDER = random.choice(['male', 'female'])
 
-    if x is None and y is None:
+    if x is None:
       self.x = random.randint(0, WIDTH)
+    if y is None:
       self.y = random.randint(0, HEIGHT)
     else:
       self.x = x
@@ -128,8 +105,8 @@ class Animal:
     self.goal = None
     self.state = None
 
-    self.x_direction = None
-    self.y_direction = None
+    self.x_direction = 0
+    self.y_direction = 0
 
     self.thirst = 0.0
     self.hunger = 0.01
@@ -144,12 +121,14 @@ class Animal:
     self.random_movement_counter = 0
 
   def set_state(self):
-    """
-    Determine the animal's current state based on its needs and surroundings.
-    """
+    self.update_needs()
+    self.determine_goal()
+    self.handle_goal_actions()
+    self.avoid_edge()
+
+  def update_needs(self):
     if self.rest > 0:
       return
-
     self.thirst += self.__class__.THIRST_INCREMENT
     self.hunger += self.__class__.HUNGER_INCREMENT
 
@@ -159,119 +138,118 @@ class Animal:
       if self.just_mated <= 0:
         self.reproductive_urge = self.BASE_REPRODUCTIVE_URGE
 
+  def determine_goal(self):
+    if self.state == 'found mate':
+      return
+
     previous_goal = self.goal
+    highest_need = max(self.thirst, self.hunger, self.reproductive_urge, self.__class__.BASE_CUTOFF)
 
-    if self.state != 'found mate':
-      if self.thirst > max(self.hunger, self.reproductive_urge, self.__class__.BASE_CUTOFF):
-        if self.goal != 'water':
-          self.goal = 'water'
-          self.state = 'searching for water'
-      elif self.hunger > max(self.thirst, self.reproductive_urge, self.__class__.BASE_CUTOFF):
-        if self.goal != 'food':
-          self.goal = 'food'
-          self.state = 'searching for food'
-      elif self.reproductive_urge > max(self.thirst, self.hunger, self.__class__.BASE_CUTOFF):
-        if self.goal != 'reproduce':
-          self.goal = 'reproduce'
-          self.state = 'searching for mate'
+    if self.thirst == highest_need and self.thirst > self.__class__.BASE_CUTOFF:
+      self.set_goal('water', 'searching for water')
+    elif self.hunger == highest_need and self.hunger > self.__class__.BASE_CUTOFF:
+      self.set_goal('food', 'searching for food')
+    elif self.reproductive_urge == highest_need and self.reproductive_urge > self.__class__.BASE_CUTOFF:
+      self.set_goal('reproduce', 'searching for mate')
+      self.add_to_mating_pool()
+    else:
+      self.goal = None
+      self.state = None
+      self.move_randomly()
 
-          # Add to mating pools in SimState
-          if self.GENDER == 'male':
-            if self.__class__.CLASS_TYPE == 'Rabbit':
-              self.SIM.mating_male_rabbits[self.KEY] = {'x': self.x, 'y': self.y, 'self': self}
-            elif self.__class__.CLASS_TYPE == 'Fox':
-              self.SIM.mating_male_foxes[self.KEY] = {'x': self.x, 'y': self.y, 'self': self}
-          elif self.GENDER == 'female':
-            if self.__class__.CLASS_TYPE == 'Rabbit':
-              self.SIM.mating_female_rabbits[self.KEY] = {'x': self.x, 'y': self.y, 'self': self}
-            elif self.__class__.CLASS_TYPE == 'Fox':
-              self.SIM.mating_female_foxes[self.KEY] = {'x': self.x, 'y': self.y, 'self': self}
+    self.remove_from_mating_pool_if_goal_changed(previous_goal)
+
+  def set_goal(self, goal, state):
+    if self.goal != goal:
+      self.goal = goal
+      self.state = state
+
+  def add_to_mating_pool(self):
+    mating_pool = self.get_mating_pool()
+    mating_pool[self.KEY] = {'x': self.x, 'y': self.y, 'self': self}
+
+  def remove_from_mating_pool_if_goal_changed(self, previous_goal):
+    if previous_goal == 'reproduce' and self.goal != 'reproduce':
+      mating_pool = self.get_mating_pool(gender=self.GENDER)
+      mating_pool.pop(self.KEY, None)
+
+  def get_mating_pool(self, gender=None):
+    if gender is None:
+      gender = 'female' if self.GENDER == 'male' else 'male'
+
+    if self.__class__.CLASS_TYPE == 'Rabbit':
+      if gender == 'female':
+        return self.SIM.mating_female_rabbits
       else:
-        self.goal = None
-        self.state = None
-        self.move_randomly()
+        return self.SIM.mating_male_rabbits
+    elif self.__class__.CLASS_TYPE == 'Fox':
+      if gender == 'female':
+        return self.SIM.mating_female_foxes
+      else:
+        return self.SIM.mating_male_foxes
 
-      # Remove from mating pools if goal has changed
-      if previous_goal == 'reproduce' and self.goal != 'reproduce':
-        if self.GENDER == 'male':
-          if self.__class__.CLASS_TYPE == 'Rabbit':
-            self.SIM.mating_male_rabbits.pop(self.KEY, None)
-          elif self.__class__.CLASS_TYPE == 'Fox':
-            self.SIM.mating_male_foxes.pop(self.KEY, None)
-        elif self.GENDER == 'female':
-          if self.__class__.CLASS_TYPE == 'Rabbit':
-            self.SIM.mating_female_rabbits.pop(self.KEY, None)
-          elif self.__class__.CLASS_TYPE == 'Fox':
-            self.SIM.mating_female_foxes.pop(self.KEY, None)
-
+  def handle_goal_actions(self):
     if self.goal == 'food':
-      if self.state == 'searching for food':
-        if self.__class__.CLASS_TYPE == 'Rabbit':
-          self.search_for_object(self.SIM.foods, 'found food')
-        elif self.__class__.CLASS_TYPE == 'Fox':
-          self.search_for_object(self.SIM.rabbits, 'found food')
-        if self.state == 'searching for food':
-          self.move_randomly()
-      if self.state == 'found food':
-        if self.__class__.CLASS_TYPE == 'Rabbit':
-          self.update_target(self.SIM.foods, 'searching for food')
-        elif self.__class__.CLASS_TYPE == 'Fox':
-          self.update_target(self.SIM.rabbits, 'searching for food')
-        if self.state == 'found food':  # Check state before proceeding
-          self.point_towards_object()
-          if self.target['distance'] <= 1:
-            self.state = 'eating'
-
+      self.handle_food_goal()
     elif self.goal == 'water':
-      if self.state == 'searching for water':
-        self.search_for_object(self.SIM.water, 'found water')
-        if self.state == 'searching for water':
-          self.move_randomly()
-      if self.state == 'found water':
-        self.update_target(self.SIM.water, 'searching for water')
-        if self.state == 'found water':  # Check state before proceeding
-          self.point_towards_object()
-          if self.target['distance'] <= 1:
-            self.state = 'drinking'
-
+      self.handle_water_goal()
     elif self.goal == 'reproduce':
-      if self.__class__.CLASS_TYPE == 'Rabbit':
-        if self.GENDER == 'male':
-          mating_pool = self.SIM.mating_female_rabbits
-        else:
-          mating_pool = self.SIM.mating_male_rabbits
-      elif self.__class__.CLASS_TYPE == 'Fox':
-        if self.GENDER == 'male':
-          mating_pool = self.SIM.mating_female_foxes
-        else:
-          mating_pool = self.SIM.mating_male_foxes
+      self.handle_reproduce_goal()
 
-      if self.state == 'searching for mate':
-        self.search_for_object(mating_pool, 'found mate', self.__class__.MATING_VIEW_RANGE)
-        if self.state == 'found mate':
-          for mate in self.visible_items:
-            potential_mate = mating_pool[mate['key']]['self']
-            if potential_mate.state == 'searching for mate':
-              self.target = mate
-              potential_mate.state = 'found mate'
-              potential_mate.target = {'key': self.KEY}
-              break
-          else:
-            self.state = 'searching for mate'
-        if self.state == 'searching for mate':
-          self.move_randomly()
+  def handle_food_goal(self):
+    if self.state == 'searching for food':
+      target_objects = self.SIM.foods if self.__class__.CLASS_TYPE == 'Rabbit' else self.SIM.rabbits
+      self.search_for_object(target_objects, 'found food')
+      if self.state == 'searching for food':
+        self.move_randomly()
+    elif self.state == 'found food':
+      target_objects = self.SIM.foods if self.__class__.CLASS_TYPE == 'Rabbit' else self.SIM.rabbits
+      self.update_target(target_objects, 'searching for food')
+      if self.state == 'found food':
+        self.point_towards_object()
+        if self.target['distance'] <= 1:
+          self.state = 'eating'
+
+  def handle_water_goal(self):
+    if self.state == 'searching for water':
+      self.search_for_object(self.SIM.water, 'found water')
+      if self.state == 'searching for water':
+        self.move_randomly()
+    elif self.state == 'found water':
+      self.update_target(self.SIM.water, 'searching for water')
+      if self.state == 'found water':
+        self.point_towards_object()
+        if self.target['distance'] <= 1:
+          self.state = 'drinking'
+
+  def handle_reproduce_goal(self):
+    mating_pool = self.get_mating_pool()
+    if self.state == 'searching for mate':
+      self.search_for_object(mating_pool, 'found mate', self.__class__.MATING_VIEW_RANGE)
       if self.state == 'found mate':
-        self.update_target(mating_pool, 'searching for mate', self.__class__.MATING_VIEW_RANGE)
-        if self.state == 'found mate':  # Check state before proceeding
-          self.point_towards_object()
-          if self.target.get('distance') is not None and self.target.get('distance') <= 1:
-            self.state = 'mating'
-            mate = mating_pool[self.target['key']]['self']
-            mate.state = 'mating'
-            mate.target = {'key': self.KEY}
+        self.find_mate_in_pool(mating_pool)
+      if self.state == 'searching for mate':
+        self.move_randomly()
+    elif self.state == 'found mate':
+      self.update_target(mating_pool, 'searching for mate', self.__class__.MATING_VIEW_RANGE)
+      if self.state == 'found mate':
+        self.point_towards_object()
+        if self.target.get('distance') is not None and self.target['distance'] <= 1:
+          self.state = 'mating'
+          mate = mating_pool[self.target['key']]['self']
+          mate.state = 'mating'
+          mate.target = {'key': self.KEY}
 
-    self.avoid_edge()
-
+  def find_mate_in_pool(self, mating_pool):
+    for mate in self.visible_items:
+      potential_mate = mating_pool[mate['key']]['self']
+      if potential_mate.state == 'searching for mate':
+        self.target = mate
+        potential_mate.state = 'found mate'
+        potential_mate.target = {'key': self.KEY}
+        break
+    else:
+      self.state = 'searching for mate'
 
   def search_for_object(self, list_of_items, state_if_found, VIEW_RANGE=None):
     if VIEW_RANGE is None:
@@ -376,11 +354,45 @@ class Animal:
     if self.y == 0 and self.y_direction == -1:
       self.y_direction = 0
     if self.y >= HEIGHT and self.y_direction == 1:
-      self.y_direction = 0 
+      self.y_direction = 0
 
+  def check_rest(self):
+    if self.rest > 0:
+      self.rest -= 1
+      return True
+    return False
 
+  def move(self):
+    if self.check_rest():
+      return
 
+    if self.state == 'eating':
+      self.handle_eating()
+    elif self.state == 'drinking':
+      self.handle_drinking()
+    elif self.state == 'mating':
+      self.handle_mating()
+    else:
+      self.handle_movement()
 
+  def handle_drinking(self):
+    self.thirst = 0
+    self.rest = self.REST_AFTER_DRINKING
+
+  def handle_movement(self):
+    self.rest = self.REST_AFTER_MOVING
+    self.x += self.x_direction
+    self.y += self.y_direction
+    self.update_position_in_sim()
+    if self.goal == 'reproduce':
+      self.update_mating_pool_position()
+
+  def update_position_in_sim(self):
+    pass  # To be implemented in subclasses
+
+  def update_mating_pool_position(self):
+    mating_pool = self.get_mating_pool(gender=self.GENDER)
+    mating_pool[self.KEY] = {'x': self.x, 'y': self.y, 'self': self}
 
 class Rabbit(Animal):
   CLASS_TYPE = 'Rabbit'
@@ -407,79 +419,68 @@ class Rabbit(Animal):
     self.SIM.rabbit_instances.append(self)
 
   def move(self):
-    if self.rest > 0:
-      self.rest -= 1
-      return
+    super().move()
 
-    if self.state == 'eating':
-      try:
-        self.hunger -= self.FOOD_RESTORATION
-        if self.hunger < 0:
-          self.hunger = 0
-        key = self.target['key']
-        target_food = self.SIM.foods[key]['self']
-        target_food.times_eaten += 1
-        self.rest = self.REST_AFTER_EATING
-      except KeyError:
-        self.state = 'searching for food'
+  def handle_eating(self):
+    try:
+      self.hunger -= self.FOOD_RESTORATION
+      if self.hunger < 0:
+        self.hunger = 0
+      key = self.target['key']
+      target_food = self.SIM.foods[key]['self']
+      target_food.times_eaten += 1
+      self.rest = self.REST_AFTER_EATING
+    except KeyError:
+      self.state = 'searching for food'
 
-    elif self.state == 'drinking':
-      self.thirst = 0
-      self.rest = self.REST_AFTER_DRINKING
-
-    elif self.state == 'mating' and self.GENDER == 'female':
+  def handle_mating(self):
+    if self.GENDER == 'female':
       self.SIM.mating_female_rabbits.pop(self.KEY, None)
       try:
         mate = self.SIM.mating_male_rabbits[self.target['key']]['self']
         mate.just_mated = self.MATING_BREAK
         mate.rest = self.REST_AFTER_MATING
-        # Create new rabbits
-        Rabbit(self.x, self.y)
-        Rabbit(self.x, self.y)
+        self.create_offspring()
         self.just_mated = self.MATING_BREAK
         self.rest = self.REST_AFTER_MATING
         self.SIM.mating_male_rabbits.pop(mate.KEY, None)
       except KeyError:
         self.state = 'searching for mate'
 
-    else:
-      self.rest = self.REST_AFTER_MOVING
-      self.x += self.x_direction
-      self.y += self.y_direction
-      self.SIM.rabbits[self.KEY] = {'x': self.x, 'y': self.y, 'self': self}
-      if self.goal == 'reproduce' and self.GENDER == 'female':
-        self.SIM.mating_female_rabbits[self.KEY] = {'x': self.x, 'y': self.y, 'self': self}
-      elif self.goal == 'reproduce' and self.GENDER == 'male':
-        self.SIM.mating_male_rabbits[self.KEY] = {'x': self.x, 'y': self.y, 'self': self}
+  def create_offspring(self):
+    Rabbit(self.x, self.y)
+    Rabbit(self.x, self.y)
 
-  def check_for_fox(self):
+  def update_position_in_sim(self):
+    self.SIM.rabbits[self.KEY] = {'x': self.x, 'y': self.y, 'self': self}
+
+  def detect_predators(self):
     if self.rest > 0:
       return False
 
     self.search_for_object(self.SIM.foxes, 'running', self.FOX_RANGE)
-    if len(self.visible_items) > 0:
+    if self.visible_items:
       self.goal = 'running'
-      self.point_towards_object()
-      self.x_direction *= -1
-      self.y_direction *= -1
-
-      # Adjust to avoid walls
-      if self.x <= WARN_ABOUT_WALL and self.y_direction == 0:
-        self.y_direction = -1 if self.y >= WIDTH / 2 else 1
-      elif self.x >= (WIDTH - WARN_ABOUT_WALL) and self.y_direction == 0:
-        self.y_direction = -1 if self.y >= WIDTH / 2 else 1
-      if self.y <= WARN_ABOUT_WALL and self.x_direction == 0:
-        self.x_direction = -1 if self.x >= WIDTH / 2 else 1
-      elif self.y >= (HEIGHT - WARN_ABOUT_WALL) and self.x_direction == 0:
-        self.x_direction = -1 if self.x >= WIDTH / 2 else 1
-
-      self.avoid_edge()
+      self.escape_predator()
       return True
-    else:
-      return False
+    return False
 
+  def escape_predator(self):
+    self.point_towards_object()
+    self.x_direction *= -1
+    self.y_direction *= -1
+    self.adjust_to_avoid_walls()
+    self.avoid_edge()
 
-
+  def adjust_to_avoid_walls(self):
+    if self.x <= WARN_ABOUT_WALL and self.y_direction == 0:
+      self.y_direction = -1 if self.y >= WIDTH / 2 else 1
+    elif self.x >= (WIDTH - WARN_ABOUT_WALL) and self.y_direction == 0:
+      self.y_direction = -1 if self.y >= WIDTH / 2 else 1
+    if self.y <= WARN_ABOUT_WALL and self.x_direction == 0:
+      self.x_direction = -1 if self.x >= WIDTH / 2 else 1
+    elif self.y >= (HEIGHT - WARN_ABOUT_WALL) and self.x_direction == 0:
+      self.x_direction = -1 if self.x >= WIDTH / 2 else 1
 
 class Fox(Animal):
   CLASS_TYPE = 'Fox'
@@ -506,46 +507,38 @@ class Fox(Animal):
     self.reproductive_urge = self.BASE_REPRODUCTIVE_URGE
 
   def move(self):
-    if self.rest > 0:
-      self.rest -= 1
-      return
+    super().move()
 
-    if self.state == 'eating':
+  def handle_eating(self):
+    try:
+      target_rabbit = self.SIM.rabbits[self.target['key']]['self']
+      self.SIM.rabbits.pop(target_rabbit.KEY, None)
+      self.SIM.rabbit_instances.remove(target_rabbit)
+      self.hunger -= self.FOOD_RESTORATION
+      if self.hunger < 0:
+        self.hunger = 0
+      self.rest = self.REST_AFTER_EATING
+      self.remove_rabbit_from_mating_pools(target_rabbit)
+    except KeyError:
+      self.state = 'searching for food'
+
+  def remove_rabbit_from_mating_pools(self, rabbit):
+    self.SIM.mating_female_rabbits.pop(rabbit.KEY, None)
+    self.SIM.mating_male_rabbits.pop(rabbit.KEY, None)
+
+  def handle_mating(self):
+    if self.GENDER == 'female':
       try:
-        target_rabbit = self.SIM.rabbits[self.target['key']]['self']
-        self.SIM.rabbits.pop(target_rabbit.KEY, None)
-        self.SIM.rabbit_instances.remove(target_rabbit)
-        self.hunger -= self.FOOD_RESTORATION
-        if self.hunger < 0:
-          self.hunger = 0
-        self.rest = self.REST_AFTER_EATING
-      except KeyError:
-        self.state = 'searching for food'
-        return
-      self.SIM.mating_female_rabbits.pop(target_rabbit.KEY, None)
-      self.SIM.mating_male_rabbits.pop(target_rabbit.KEY, None)
-
-    elif self.state == 'drinking':
-      self.thirst = 0
-      self.rest = self.REST_AFTER_DRINKING
-
-    elif self.state == 'mating' and self.GENDER == 'female':
-      try:
-        # Check if the mate is one block away
-        mate = self.SIM.mating_male_foxes.get(self.target.get('key'))
-        if mate:
-          mate_obj = mate['self']
-          x_distance = abs(mate_obj.x - self.x)
-          y_distance = abs(mate_obj.y - self.y)
-
-          # If the mate is one block away in both x and y, the female does not move
-          if x_distance == 1 and y_distance == 1:
-            self.rest = self.REST_AFTER_MOVING  # Prevent further movement
+        mate_entry = self.SIM.mating_male_foxes.get(self.target.get('key'))
+        if mate_entry:
+          mate = mate_entry['self']
+          if self.is_adjacent(mate):
+            self.rest = self.REST_AFTER_MOVING  # Wait for mating
           else:
-            mate_obj.just_mated = self.MATING_BREAK
-            mate_obj.rest = self.REST_AFTER_MATING
-            self.SIM.mating_male_foxes.pop(mate_obj.KEY, None)
-            Fox(self.x, self.y)  # Create a new fox
+            mate.just_mated = self.MATING_BREAK
+            mate.rest = self.REST_AFTER_MATING
+            self.SIM.mating_male_foxes.pop(mate.KEY, None)
+            self.create_offspring()
       except KeyError:
         self.state = 'searching for mate'
         return
@@ -553,19 +546,14 @@ class Fox(Animal):
       self.rest = self.REST_AFTER_MATING
       self.SIM.mating_female_foxes.pop(self.KEY, None)
 
-    else:
-      self.rest = self.REST_AFTER_MOVING
-      self.x += self.x_direction
-      self.y += self.y_direction
-      self.SIM.foxes[self.KEY] = {'x': self.x, 'y': self.y, 'self': self}
-      if self.goal == 'reproduce' and self.GENDER == 'female':
-        self.SIM.mating_female_foxes[self.KEY] = {'x': self.x, 'y': self.y, 'self': self}
-      elif self.goal == 'reproduce' and self.GENDER == 'male':
-        self.SIM.mating_male_foxes[self.KEY] = {'x': self.x, 'y': self.y, 'self': self}
+  def is_adjacent(self, other):
+    return abs(other.x - self.x) == 1 and abs(other.y - self.y) == 1
 
+  def create_offspring(self):
+    Fox(self.x, self.y)
 
-
-
+  def update_position_in_sim(self):
+    self.SIM.foxes[self.KEY] = {'x': self.x, 'y': self.y, 'self': self}
 
 class Food:
   SIM = SimState()
@@ -611,8 +599,6 @@ class Food:
 
       self.SIM.foods[self.KEY] = {'x': self.x, 'y': self.y, 'self': self}
       self.SIM.food_instances.append(self)
-
-
 
 def graph(record_fox_instances, record_rabbit_instances):
   len_of_fox_record = len(record_fox_instances)
@@ -823,10 +809,7 @@ def main():
             tracked_object = random.choice(SIM.fox_instances)
           except IndexError:
             pass
-    
 
-    
-    
     # Update foxes
     foxes_to_remove = []
     for fox in SIM.fox_instances:
@@ -848,8 +831,8 @@ def main():
     # Update rabbits
     rabbits_to_remove = []
     for rabbit in SIM.rabbit_instances:
-      fox_in_range = rabbit.check_for_fox()
-      if not fox_in_range:
+      predator_detected = rabbit.detect_predators()
+      if not predator_detected:
         rabbit.set_state()
       if max(rabbit.thirst, rabbit.hunger) > Animal.GOAL_CUTOFF:
         if rabbit.thirst > rabbit.hunger:
@@ -883,7 +866,5 @@ def main():
   pygame.quit()
   graph(record_fox_instances, record_rabbit_instances)
 
-
 if __name__ == '__main__':
   main()
-
